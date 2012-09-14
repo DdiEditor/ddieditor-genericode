@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension
+         point="org.eclipse.ui.menus">
+      <menuContribution
+            allPopups="false"
+            locationURI="menu:toolsmenu?after=ddieditor-ui.file.tools.separator1">
+         <separator
+               name="ddieditor-genericode.separator2"
+               visible="true">
+         </separator>
+         <command
+               commandId="dk.dda.ddieditor.genericode.command.CreateCv"
+               label="Create CV"
+               style="push">
+         </command>
+         <separator
+               name="ddieditor-genericode.separator1"
+               visible="true">
+         </separator>
+      </menuContribution>
+   </extension>
+   <extension
+         point="org.eclipse.ui.commands">
+      <command
+            defaultHandler="dk.dda.ddieditor.genericode.command.CreateCv"
+            id="dk.dda.ddieditor.genericode.command.CreateCv"
+            name="Create CV">
+      </command>
+   </extension>
+
+</plugin>

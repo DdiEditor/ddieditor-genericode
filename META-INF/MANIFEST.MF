@@ -1,0 +1,15 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: Ddieditor Genericode
+Bundle-SymbolicName: ddieditor-genericode;singleton:=true
+Bundle-Version: 0.1.0
+Bundle-Activator: dk.dda.ddieditor.genericode.osgi.Activator
+Bundle-Vendor: Danish Data Archive
+Require-Bundle: org.eclipse.ui,
+ org.eclipse.core.runtime,
+ ddieditor-ui;bundle-version="0.21.0",
+ lib-java;bundle-version="0.15.0",
+ ddieditor;bundle-version="0.23.0",
+ util;bundle-version="0.24.0"
+Bundle-RequiredExecutionEnvironment: JavaSE-1.6
+Bundle-ActivationPolicy: lazy
