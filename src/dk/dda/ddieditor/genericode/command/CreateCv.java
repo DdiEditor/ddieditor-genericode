@@ -36,8 +36,7 @@ import dk.dda.ddieditor.genericode.wizard.CreateCvWizard;
 /**
  * RCP command for classification creation
  */
-public class CreateCv extends
-		org.eclipse.core.commands.AbstractHandler {
+public class CreateCv extends org.eclipse.core.commands.AbstractHandler {
 
 	@Override
 	public Object execute(ExecutionEvent event) throws ExecutionException {
@@ -49,16 +48,15 @@ public class CreateCv extends
 		int returnCode = dialog.open();
 		if (returnCode != Window.CANCEL) {
 			// import
-			CreateCvJob longJob = new CreateCvJob(
-					wizard.selectedResource, wizard.cvsFile, wizard.labelTxt,
-					wizard.descriptionTxt, wizard.codeImpl);
+			CreateCvJob longJob = new CreateCvJob(wizard);
 			BusyIndicator.showWhile(PlatformUI.getWorkbench().getDisplay(),
 					longJob);
 
 			// refresh
-			ViewManager.getInstance().addViewsToRefresh(
-					new String[] { CodeSchemeEditor.ID,
-							CategorySchemeEditor.ID});
+			ViewManager.getInstance()
+					.addViewsToRefresh(
+							new String[] { CodeSchemeEditor.ID,
+									CategorySchemeEditor.ID });
 			ViewManager.getInstance().refesh();
 		}
 		return null;

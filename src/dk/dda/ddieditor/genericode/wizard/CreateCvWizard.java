@@ -1,14 +1,10 @@
 package dk.dda.ddieditor.genericode.wizard;
 
 import java.io.File;
-import java.io.FileReader;
-import java.util.List;
 
 import org.ddialliance.ddieditor.model.resource.DDIResourceType;
-import org.ddialliance.ddieditor.persistenceaccess.PersistenceManager;
 import org.ddialliance.ddieditor.ui.editor.Editor;
 import org.ddialliance.ddieditor.ui.preference.PreferenceUtil;
-import org.ddialliance.ddiftp.util.DDIFtpException;
 import org.ddialliance.ddiftp.util.Translator;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.wizard.Wizard;
@@ -24,16 +20,12 @@ import org.eclipse.swt.events.SelectionListener;
 import org.eclipse.swt.events.TraverseEvent;
 import org.eclipse.swt.events.TraverseListener;
 import org.eclipse.swt.widgets.Button;
-import org.eclipse.swt.widgets.Combo;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.DirectoryDialog;
 import org.eclipse.swt.widgets.FileDialog;
 import org.eclipse.swt.widgets.Group;
-import org.eclipse.swt.widgets.Label;
-import org.eclipse.swt.widgets.Spinner;
 import org.eclipse.swt.widgets.Text;
 import org.eclipse.ui.PlatformUI;
-
-import au.com.bytecode.opencsv.CSVReader;
 
 /*
  * Copyright 2012 Danish Data Archive (http://www.dda.dk) 
@@ -60,12 +52,11 @@ import au.com.bytecode.opencsv.CSVReader;
  * RCP wizard for classification creation
  */
 public class CreateCvWizard extends Wizard {
-	private List<DDIResourceType> resources = null;
-
 	public DDIResourceType selectedResource = null;
-	public String cvsFile = null;
-	public String labelTxt = "";
-	public String descriptionTxt = "";
+	public String csvFile = null;
+	public String shortname = "", longName = "", annotation = "";
+	public String version = "", canonicalUri = "", canonicalVersionUri = "",
+			locationUri = "", exportFileName = "", exportPath = "";
 	public int codeImpl = 1; // use default nested
 	int levels = 0;
 
@@ -78,20 +69,19 @@ public class CreateCvWizard extends Wizard {
 	public void addPages() {
 		SelectPage rangePage = new SelectPage();
 		addPage(rangePage);
+		ExportPage exportPage = new ExportPage();
+		addPage(exportPage);
 	}
 
 	class SelectPage extends WizardPage {
 		public static final String PAGE_NAME = "select";
-		Spinner spinner = null;
-		Label spinnerLabel = null;
-
+		
 		public SelectPage() {
-			super(PAGE_NAME, Translator.trans("cv.wizard.title"),
-					null);
+			super(PAGE_NAME, Translator.trans("cv.wizard.title"), null);
 		}
 
 		void pageComplete() {
-			if (cvsFile != null) {
+			if (csvFile != null) {
 				setPageComplete(true);
 			}
 		}
@@ -99,50 +89,119 @@ public class CreateCvWizard extends Wizard {
 		@Override
 		public void createControl(Composite parent) {
 			final Editor editor = new Editor();
-			Group group = editor.createGroup(parent,
-					Translator.trans("cv.wizard.title"));
-			// label
-			editor.createLabel(group, Translator.trans("cv.label"));
-			Text label = editor.createText(group, "", false);
-			label.addModifyListener(new ModifyListener() {
-				@Override
-				public void modifyText(ModifyEvent event) {
-					labelTxt = ((Text) event.getSource()).getText();
-				}
-			});
-
+			Group _group = editor.createGroup(parent,
+					Translator.trans("cv.wizard.titleshort"));
+			//
 			// description
-			StyledText description = editor.createTextAreaInput(group,
-					Translator.trans("cv.description"), "", false);
-			description.addModifyListener(new ModifyListener() {
+			//
+			// short name
+			Group descriptionGroup = editor.createGroup(_group,
+					Translator.trans("cv.description.group"));
+			editor.createLabel(descriptionGroup,
+					Translator.trans("cv.description.shortname"));
+			Text shortNameTxt = editor.createText(descriptionGroup, "", false);
+			shortNameTxt.addModifyListener(new ModifyListener() {
 				@Override
 				public void modifyText(ModifyEvent event) {
-					descriptionTxt = ((StyledText) event.getSource()).getText();
+					shortname = ((Text) event.getSource()).getText();
 				}
 			});
 
+			// long name
+			editor.createLabel(descriptionGroup,
+					Translator.trans("cv.description.longname"));
+			Text longNameTxt = editor.createText(descriptionGroup, "", false);
+			longNameTxt.addModifyListener(new ModifyListener() {
+				@Override
+				public void modifyText(ModifyEvent event) {
+					longName = ((Text) event.getSource()).getText();
+				}
+			});
+
+			// annotation
+			StyledText annaotationTxt = editor.createTextAreaInput(
+					descriptionGroup,
+					Translator.trans("cv.description.annotation"), "", false);
+			annaotationTxt.addModifyListener(new ModifyListener() {
+				@Override
+				public void modifyText(ModifyEvent event) {
+					annotation = ((StyledText) event.getSource()).getText();
+				}
+			});
+
+			//
+			// identification
+			//
+			//
+			Group idGroup = editor.createGroup(_group,
+					Translator.trans("cv.id.group"));
+
+			// version
+			editor.createLabel(idGroup, Translator.trans("cv.id.version"));
+			Text versionTxt = editor.createText(idGroup, "", false);
+			versionTxt.addModifyListener(new ModifyListener() {
+				@Override
+				public void modifyText(ModifyEvent event) {
+					version = ((Text) event.getSource()).getText();
+				}
+			});
+
+			// canonicalUri
+			editor.createLabel(idGroup, Translator.trans("cv.id.canonicaluri"));
+			Text canonicalUriTxt = editor.createText(idGroup, "", false);
+			canonicalUriTxt.addModifyListener(new ModifyListener() {
+				@Override
+				public void modifyText(ModifyEvent event) {
+					canonicalUri = ((Text) event.getSource()).getText();
+				}
+			});
+
+			// canonicalVersionUri
+			editor.createLabel(idGroup,
+					Translator.trans("cv.id.canonicalversionuri"));
+			Text canonicalVersionUriTxt = editor.createText(idGroup, "", false);
+			canonicalVersionUriTxt.addModifyListener(new ModifyListener() {
+				@Override
+				public void modifyText(ModifyEvent event) {
+					canonicalVersionUri = ((Text) event.getSource()).getText();
+				}
+			});
+
+			// locationUri
+			editor.createLabel(idGroup, Translator.trans("cv.id.locationuri"));
+			Text locationUriTxt = editor.createText(idGroup, "", false);
+			locationUriTxt.addModifyListener(new ModifyListener() {
+				@Override
+				public void modifyText(ModifyEvent event) {
+					locationUri = ((Text) event.getSource()).getText();
+				}
+			});
+
+			//
 			// csv file
-			editor.createLabel(group,
-					Translator.trans("cv.filechooser.title"));
-			final Text pathText = editor.createText(group, "");
+			//
+			// csv file label
+			editor.createLabel(_group, Translator.trans("cv.filechooser.title"));
+			final Text pathText = editor.createText(_group, "");
 			pathText.addKeyListener(new KeyAdapter() {
 				@Override
 				public void keyReleased(KeyEvent e) {
 					// on a CR - check if file exist and read it
 					if (e.keyCode == SWT.CR) {
-						cvsFile = readFile(pathText);
+						csvFile = readFile(pathText);
 						pageComplete();
 					}
 				}
 			});
+			
 			pathText.addTraverseListener(new TraverseListener() {
 				public void keyTraversed(TraverseEvent e) {
 					// on a TAB - check if file exist and read it
 					switch (e.detail) {
 					case SWT.TRAVERSE_TAB_NEXT:
 					case SWT.TRAVERSE_TAB_PREVIOUS: {
-						cvsFile = readFile(pathText);
-						if (cvsFile == null) {
+						csvFile = readFile(pathText);
+						if (csvFile == null) {
 							e.doit = false;
 						}
 					}
@@ -150,7 +209,8 @@ public class CreateCvWizard extends Wizard {
 				}
 			});
 
-			Button pathBrowse = editor.createButton(group,
+			// csv file selection
+			Button pathBrowse = editor.createButton(_group,
 					Translator.trans("cv.filechooser.browse"));
 			pathBrowse.addSelectionListener(new SelectionListener() {
 				@Override
@@ -162,25 +222,14 @@ public class CreateCvWizard extends Wizard {
 					fileChooser.setFilterExtensions(new String[] { "*.csv",
 							"*.*" });
 					fileChooser.setFilterNames(new String[] {
-							Translator
-									.trans("cv.filternames.csvfile"),
-							Translator
-									.trans("cv.filternames.anyfile") });
+							Translator.trans("cv.filternames.csvfile"),
+							Translator.trans("cv.filternames.anyfile") });
 
 					PreferenceUtil.setPathFilter(fileChooser);
-					cvsFile = fileChooser.open();
-					PreferenceUtil.setLastBrowsedPath(cvsFile);
+					csvFile = fileChooser.open();
+					PreferenceUtil.setLastBrowsedPath(csvFile);
 
-					pathText.setText(cvsFile);
-
-					// 20120903 levels comment out
-					// try {
-					// readLevels(new File(pathText.getText()));
-					// } catch (Exception ex) {
-					// levels = 1;
-					// return;
-					// }
-
+					pathText.setText(csvFile);
 					pageComplete();
 				}
 
@@ -189,45 +238,9 @@ public class CreateCvWizard extends Wizard {
 					// do nothing
 				}
 			});
-			// loaded resources
-			try {
-				resources = PersistenceManager.getInstance().getResources();
-			} catch (DDIFtpException e) {
-				MessageDialog.openError(PlatformUI.getWorkbench().getDisplay()
-						.getActiveShell(), Translator.trans("ErrorTitle"),
-						e.getMessage());
-			}
-
-			String[] options = new String[resources.size()];
-			int count = 0;
-			for (DDIResourceType resource : resources) {
-				options[count] = resource.getOrgName();
-				count++;
-			}
-			editor.createLabel(group,
-					Translator.trans("cv.resource.select"));
-			Combo combo = editor.createCombo(group, options);
-			if (options.length == 1) {
-				combo.select(0);
-				selectedResource = resources.get(0);
-			} else {
-				combo.addSelectionListener(new SelectionListener() {
-					@Override
-					public void widgetSelected(SelectionEvent event) {
-						Combo c = (Combo) event.getSource();
-						selectedResource = resources.get(c.getSelectionIndex());
-						pageComplete();
-					}
-
-					@Override
-					public void widgetDefaultSelected(SelectionEvent event) {
-						// do nothing
-					}
-				});
-			}
 
 			// finalize
-			setControl(group);
+			setControl(_group);
 			setPageComplete(false);
 		}
 
@@ -237,8 +250,7 @@ public class CreateCvWizard extends Wizard {
 						.openError(PlatformUI.getWorkbench().getDisplay()
 								.getActiveShell(), Translator
 								.trans("ErrorTitle"), Translator.trans(
-								"cv.filenotfound.message",
-								pathText.getText()));
+								"cv.filenotfound.message", pathText.getText()));
 				setPageComplete(false);
 				return null;
 			}
@@ -246,40 +258,86 @@ public class CreateCvWizard extends Wizard {
 			setPageComplete(true);
 			return pathText.getText();
 		}
+	}
 
-		private void setLevelInput() {
-			if (codeImpl == 0 && levels > 1) {
-				spinner.setMaximum(levels);
-				spinner.setSelection(0);
-				spinner.setVisible(true);
-				spinnerLabel.setVisible(true);
-			} else {
-				spinner.setVisible(false);
-				spinnerLabel.setVisible(false);
+	class ExportPage extends WizardPage {
+		public static final String PAGE_NAME = "export";
+
+		public ExportPage() {
+			super(PAGE_NAME, Translator.trans("cv.wizard.title"), null);
+		}
+
+		void pageComplete() {
+			if (exportFileName.length() > 0 && exportPath.length() > 0) {
+				setPageComplete(true);
 			}
 		}
 
-		private void readLevels(File file) throws Exception {
-			CSVReader reader = new CSVReader(new FileReader(file));
-			String[] cells;
-			String empty = "";
-			boolean emptyLine = true;
+		@Override
+		public void createControl(Composite parent) {
+			final Editor editor = new Editor();
 
-			levels = 0;
-			while ((cells = reader.readNext()) != null) {
-				// test for end of level definition
-				for (int i = 0; i < cells.length; i++) {
-					if (!cells[i].equals(empty)) {
-						emptyLine = false;
-					}
+			// export group
+			Group exportGroup = editor.createGroup(parent,
+					Translator.trans("cv.export.path"));
+
+			// export path
+			editor.createLabel(exportGroup,
+					Translator.trans("ExportDDI3Action.filechooser.title"));
+			final Text exportPathText = editor.createText(exportGroup, "",
+					false);
+			exportPathText.addModifyListener(new ModifyListener() {
+				@Override
+				public void modifyText(ModifyEvent e) {
+					exportPath = ((Text) e.getSource()).getText();
 				}
-				if (emptyLine) {
-					break;
-				}
-				levels++;
-				emptyLine = true;
+			});
+			File lastBrowsedPath = PreferenceUtil.getLastBrowsedPath();
+			if (lastBrowsedPath != null) {
+				exportPathText.setText(lastBrowsedPath.getAbsolutePath());
+				exportPath = lastBrowsedPath.getAbsolutePath();
 			}
-			setLevelInput();
+
+			Button exportPathBrowse = editor.createButton(exportGroup,
+					Translator.trans("ExportDDI3Action.filechooser.browse"));
+			exportPathBrowse.addSelectionListener(new SelectionListener() {
+				@Override
+				public void widgetSelected(SelectionEvent e) {
+					DirectoryDialog dirChooser = new DirectoryDialog(PlatformUI
+							.getWorkbench().getDisplay().getActiveShell());
+					dirChooser.setText(Translator
+							.trans("ExportDDI3Action.filechooser.title"));
+					PreferenceUtil.setPathFilter(dirChooser);
+					exportPath = dirChooser.open();
+					if (exportPath != null) {
+						exportPathText.setText(exportPath);
+						PreferenceUtil.setLastBrowsedPath(exportPath);
+					}
+					pageComplete();
+				}
+
+				@Override
+				public void widgetDefaultSelected(SelectionEvent e) {
+					// do nothing
+				}
+			});
+
+			// file name
+			Text exportFileNameText = editor.createTextInput(exportGroup,
+					Translator.trans("ExportDDI3Action.filename"), "", null);
+
+			exportFileNameText.addModifyListener(new ModifyListener() {
+				@Override
+				public void modifyText(ModifyEvent e) {
+					Text text = ((Text) e.getSource());
+					exportFileName = text.getText();
+					pageComplete();
+				}
+			});
+
+			// finalize
+			setControl(exportGroup);
+			setPageComplete(false);
 		}
 	}
 }

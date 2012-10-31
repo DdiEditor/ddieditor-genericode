@@ -1,45 +1,47 @@
 package dk.dda.ddieditor.genericode.command;
 
+import java.io.File;
 import java.io.FileReader;
-import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 
-import org.ddialliance.ddi3.xml.xmlbeans.logicalproduct.CategorySchemeDocument;
-import org.ddialliance.ddi3.xml.xmlbeans.logicalproduct.CategorySchemeType;
-import org.ddialliance.ddi3.xml.xmlbeans.logicalproduct.CategoryType;
-import org.ddialliance.ddi3.xml.xmlbeans.logicalproduct.CodeSchemeDocument;
-import org.ddialliance.ddi3.xml.xmlbeans.logicalproduct.CodeSchemeType;
-import org.ddialliance.ddi3.xml.xmlbeans.logicalproduct.CodeType;
-import org.ddialliance.ddi3.xml.xmlbeans.logicalproduct.LevelDocument;
-import org.ddialliance.ddi3.xml.xmlbeans.logicalproduct.LevelType;
-import org.ddialliance.ddi3.xml.xmlbeans.reusable.AbstractMaintainableType;
-import org.ddialliance.ddi3.xml.xmlbeans.reusable.AbstractVersionableType;
-import org.ddialliance.ddi3.xml.xmlbeans.reusable.DescriptionDocument;
-import org.ddialliance.ddi3.xml.xmlbeans.reusable.LabelType;
-import org.ddialliance.ddi3.xml.xmlbeans.reusable.StructuredStringType;
-import org.ddialliance.ddieditor.logic.identification.IdentificationManager;
+import javax.xml.namespace.QName;
+
+import org.apache.xmlbeans.XmlCursor;
+import org.apache.xmlbeans.XmlOptions;
 import org.ddialliance.ddieditor.model.DdiManager;
-import org.ddialliance.ddieditor.model.lightxmlobject.LightXmlObjectType;
-import org.ddialliance.ddieditor.model.resource.DDIResourceType;
-import org.ddialliance.ddieditor.persistenceaccess.PersistenceManager;
 import org.ddialliance.ddieditor.ui.editor.Editor;
-import org.ddialliance.ddieditor.ui.preference.PreferenceUtil;
 import org.ddialliance.ddieditor.ui.util.LanguageUtil;
-import org.ddialliance.ddieditor.util.LightXmlObjectUtil;
+import org.ddialliance.ddieditor.util.DdiEditorConfig;
 import org.ddialliance.ddiftp.util.DDIFtpException;
 import org.ddialliance.ddiftp.util.Translator;
 import org.ddialliance.ddiftp.util.log.Log;
 import org.ddialliance.ddiftp.util.log.LogFactory;
 import org.ddialliance.ddiftp.util.log.LogType;
 import org.ddialliance.ddiftp.util.xml.XmlBeansUtil;
+import org.eclipse.core.runtime.Platform;
+import org.oasisOpen.docs.codelist.ns.genericode.Agency;
+import org.oasisOpen.docs.codelist.ns.genericode.AnyOtherContent;
 import org.oasisOpen.docs.codelist.ns.genericode.AnyOtherLanguageContent;
+import org.oasisOpen.docs.codelist.ns.genericode.CodeListDocument;
+import org.oasisOpen.docs.codelist.ns.genericode.CodeListDocument1;
 import org.oasisOpen.docs.codelist.ns.genericode.Column;
+import org.oasisOpen.docs.codelist.ns.genericode.ColumnSet;
+import org.oasisOpen.docs.codelist.ns.genericode.Key;
+import org.oasisOpen.docs.codelist.ns.genericode.LongName;
 import org.oasisOpen.docs.codelist.ns.genericode.Row;
+import org.oasisOpen.docs.codelist.ns.genericode.ShortName;
+import org.oasisOpen.docs.codelist.ns.genericode.UseType;
+import org.oasisOpen.docs.codelist.ns.genericode.Value;
+import org.w3.x1999.xhtml.PDocument;
 
+import au.com.bytecode.opencsv.CSVParser;
 import au.com.bytecode.opencsv.CSVReader;
+import dk.dda.ddieditor.genericode.wizard.CreateCvWizard;
 
 /*
  * Copyright 2012 Danish Data Archive (http://www.dda.dk) 
@@ -62,75 +64,216 @@ import au.com.bytecode.opencsv.CSVReader;
  * http://www.gnu.org/copyleft/lesser.html
  */
 
-/*
- * CreateClassificationJob is inspired by the project: Virgil UI by: Samuel Spencer, see: http://code.google.com/p/virgil-ui/
- */
-
 /**
- * Parse CSV and store DDI-L
+ * Parse CSV and create Genericode controled vocabulary
  */
 public class CreateCvJob implements Runnable {
 	private Log log = LogFactory.getLog(LogType.SYSTEM, CreateCvJob.class);
+	CreateCvWizard createCvWizard;
 
-	DDIResourceType selectedResource = null;
-	String csvFile = null;
-	String label;
-	String descriptionTxt;
-	int codeImpl;
+	CodeListDocument codeListDoc;
+	CodeListDocument1 codeListType;
+
+	int lineCount = 1;
+	int levelCount = 0;
+	String empty = "";
 
 	List<Column> columns = new ArrayList<Column>();
 	List<Row> rows = new ArrayList<Row>();
-	Map<Integer, String> parentCodeMap = new HashMap<Integer, String>();
+	Map<Integer, Row> levelToRow = new HashMap<Integer, Row>();
 
-	public CreateCvJob(DDIResourceType selectedResource, String inCsvFile,
-			String label, String descriptionTxt, int codeImpl) {
-		this.selectedResource = selectedResource;
-		this.csvFile = inCsvFile;
-		this.label = label;
-		this.descriptionTxt = descriptionTxt;
-		this.codeImpl = codeImpl;
+	String keyColumnRefId;
+	boolean keyColumnRefIdFound = false;
+	int numberOfColums = 0;
+
+	String notDefined = "Not Defined";
+	String parentCode = "parentlevelcode";
+	String levelCode = "lowestlevelcode";
+
+	CSVParser csvParser = new CSVParser(",".charAt(0), "'".charAt(0));
+
+	public CreateCvJob(CreateCvWizard createCvWizard) {
+		this.createCvWizard = createCvWizard;
 	}
 
 	@Override
 	public void run() {
 		try {
+			// init
+			codeListDoc = CodeListDocument.Factory.newInstance(DdiManager
+					.getInstance().getXmlOptions());
+			codeListType = codeListDoc.addNewCodeList();
+
 			// parse csv
 			try {
 				parseCsv();
 			} catch (Exception e) {
+				if (e instanceof DDIFtpException) {
+					throw e;
+				}
 				DDIFtpException ex = new DDIFtpException(Translator.trans(
-						"classcification.error.cvsfileparseerror", csvFile));
+						"cv.error.cvsfileparseerror", createCvWizard.csvFile));
 				ex.setRealThrowable(e);
+				e.printStackTrace();
+
 				throw ex;
 			}
 
 			// post process
-			// postProcess();
+			postProcess();
 
-			// store ddi
-			storeDdi();
+			// store gc
+			storeGc();
 		} catch (Exception e) {
 			Editor.showError(e, null);
 		}
 	}
 
-	private void storeDdi() throws Exception {
+	private void postProcess() throws Exception {
+		// description
+		AnyOtherLanguageContent description = codeListType.addNewAnnotation()
+				.addNewDescription();
+		setTextOnDescription(description, createCvWizard.annotation);
+
+		// app data
+		AnyOtherContent appInfo = codeListType.getAnnotation().addNewAppInfo();
+		XmlBeansUtil.setXmlOnElement(appInfo,
+				dk.dda.ddieditor.genericode.model.ddicv.Value
+						.createDdiCvValueWithKeyAttValue("CopyrightOwner",
+								DdiEditorConfig
+										.get(DdiEditorConfig.DDI_AGENCY_NAME)));
+		XmlBeansUtil.setXmlOnElement(appInfo,
+				dk.dda.ddieditor.genericode.model.ddicv.Value
+						.createDdiCvValueWithKeyAttValue("CopyrightOwnerUrl",
+								DdiEditorConfig
+										.get(DdiEditorConfig.DDI_AGENCY_HP)));
+		XmlBeansUtil.setXmlOnElement(appInfo,
+				dk.dda.ddieditor.genericode.model.ddicv.Value
+						.createDdiCvValueWithKeyAttValue("CopyrightYear", ""
+								+ Calendar.getInstance().get(Calendar.YEAR)));
+		XmlBeansUtil.setXmlOnElement(appInfo,
+				dk.dda.ddieditor.genericode.model.ddicv.Value
+						.createDdiCvValueWithKeyAttValue("Software",
+								"DdiEditor-Genericode"));
+		XmlBeansUtil.setXmlOnElement(appInfo,
+				dk.dda.ddieditor.genericode.model.ddicv.Value
+						.createDdiCvValueWithKeyAttValue("SoftwareVersion", ""
+								+ Platform.getBundle("ddieditor-genericode")
+										.getHeaders().get("Bundle-Version")));
+
+		// identification
+		ShortName shortName = codeListType.addNewIdentification()
+				.addNewShortName();
+		shortName.setLang(LanguageUtil.getOriginalLanguage());
+		shortName.setStringValue(createCvWizard.shortname);
+
+		LongName longName = codeListType.getIdentification().addNewLongName();
+		longName.setLang(LanguageUtil.getOriginalLanguage());
+		longName.setStringValue(createCvWizard.longName);
+
+		// agency
+		Agency agency = codeListType.getIdentification().addNewAgency();
+		agency.addNewShortName().setStringValue(
+				DdiEditorConfig.get(DdiEditorConfig.DDI_AGENCY_NAME));
+		agency.addNewLongName().setStringValue(
+				DdiEditorConfig.get(DdiEditorConfig.DDI_AGENCY_DESCRIPTION));
+		agency.addNewIdentifier().setStringValue(
+				DdiEditorConfig.get(DdiEditorConfig.DDI_AGENCY_IDENTIFIER));
+
+		// version
+		codeListType.getIdentification().setVersion(createCvWizard.version);
+
+		// uri
+		codeListType.getIdentification().setCanonicalUri(
+				createCvWizard.canonicalUri);
+		codeListType.getIdentification().setCanonicalVersionUri(
+				createCvWizard.canonicalVersionUri);
+		codeListType.getIdentification().addNewLocationUri()
+				.setStringValue(createCvWizard.locationUri);
+
+		// columns
+		ColumnSet columnSet = codeListType.addNewColumnSet();
+		columnSet.setColumnArray(columns.toArray(new Column[] {}));
+
+		// column key
+		Key key = null;
+		for (Column col : columnSet.getColumnList()) {
+			if (col.getId().equals(keyColumnRefId)) {
+				key = columnSet.addNewKey();
+				key.addNewColumnRef().setRef(keyColumnRefId);
+				key.setId("Key-" + col.getId());
+				XmlBeansUtil.setTextOnMixedElement(
+						key.addNewShortName(),
+						"Key-"
+								+ XmlBeansUtil.getTextOnMixedElement(col
+										.getShortName()));
+			}
+		}
+		if (key == null) {
+			DDIFtpException e = new DDIFtpException(
+					Translator.trans("cv.error.nocolumnkeydefined"));
+			e.setRealThrowable(new Throwable());
+			throw e;
+		}
+
+		// rows
+		codeListType.addNewSimpleCodeList().setRowArray(
+				rows.toArray(new Row[] {}));
+
+		// debug
+		if (log.isDebugEnabled()) {
+			log.debug(codeListDoc.xmlText(DdiManager.getInstance()
+					.getXmlOptions()));
+		}
+	}
+
+	private void storeGc() throws Exception {
+		// file name *.gc
+
+		// create file
+		File file = new File(createCvWizard.exportPath + File.separator
+				+ createCvWizard.exportFileName);
+		if (file.exists()) {
+			file.delete();
+		}
+
+		// name space prefixes
+		HashMap<String, String> suggestedPrefixes = new HashMap<String, String>();
+		suggestedPrefixes.put("http://www.w3.org/1999/xhtml", "h");
+		suggestedPrefixes.put("urn:ddi-cv", "ddi-cv");
+		suggestedPrefixes.put("urn:dda-cv", "dda-cv");
+		suggestedPrefixes.put(
+				"http://docs.oasis-open.org/codelist/ns/genericode/1.0/", "gc");
+
+		XmlOptions xmlOptions = DdiManager.getInstance().getXmlOptions();
+		xmlOptions.setSaveSuggestedPrefixes(suggestedPrefixes);
+
+		// xml
+		XmlCursor cursor = codeListDoc.newCursor();
+		cursor.toChild(0);
+		cursor.setAttributeText(
+				new QName("http://www.w3.org/2001/XMLSchema-instance",
+						"schemaLocation"),
+				"http://docs.oasis-open.org/codelist/ns/genericode/1.0/ "
+						+ "http://docs.oasis-open.org/codelist/cs-genericode-1.0/xsd/genericode.xsd");
+
+		StringBuffer xml = new StringBuffer(
+				"<?xml version=\"1.0\" encoding=\"utf-8\"?>");
+		xml.append(codeListDoc.xmlText(xmlOptions));
+		codeListDoc.save(file, xmlOptions);
 	}
 
 	public void parseCsv() throws Exception {
-		CSVReader reader = new CSVReader(new FileReader(csvFile));
+		CSVReader reader = new CSVReader(new FileReader(createCvWizard.csvFile));
 		String[] cells;
-		int count = 1;
 
-		String empty = "";
 		boolean emptyLine = true;
 		boolean dataStart = false;
-		int levelCount = 1;
 
 		// TODO error report on csv file -care for users!!!
 		while ((cells = reader.readNext()) != null) {
 			if (log.isDebugEnabled()) {
-				log.debug("Line:" + count);
+				log.debug("Line:" + lineCount);
 				StringBuilder msg = new StringBuilder();
 				for (int i = 0; i < cells.length; i++) {
 					msg.append(cells[i] + ", ");
@@ -150,94 +293,243 @@ public class CreateCvJob implements Runnable {
 				continue;
 			}
 
-			// parse code,caption,definition
-			for (int i = 0; i < cells.length; i++) {
-				// levels
-				if (!dataStart) {
-					levelCount = columns.size();
+			// levels
+			if (!dataStart) {
+				levelCount++;
 
-					// level 1
-					if (levelCount == 0) {
-						createColumn(levelCount + 1, cells[i], cells[i + 1],
-								cells[i + 2]);
-						break;
+				// define number of columns
+				for (int j = 0; j < cells.length; j++) {
+					if (!cells[j].equals(empty)) {
+						numberOfColums++;
 					}
+				}
 
-					// level 2
-					if (levelCount == 1 && !cells[levelCount + 1].equals(empty)) {
-						createColumn(levelCount + 1, cells[(levelCount + 1)],
-								cells[(levelCount + 2)],
-								cells[(levelCount + 3)]);
-						break;
-					}
-
-					// level n
-					if (levelCount > 0 && !cells[levelCount + 2].equals(empty)) {
-						createColumn(levelCount + 1, cells[(levelCount + 2)],
-								cells[(levelCount + 3)],
-								cells[(levelCount + 4)]);
-						break;
-					}
-				} else {
-					// codes
+				createColums(levelCount, numberOfColums, cells);
+			} else {
+				// row
+				// define current level numberOfColums
+				int offset = 0;
+				for (int i = 0; i < cells.length; i++) {
 					if (!cells[i].equals(empty)) {
-						int reminder = i % 3;
-						if (i == 0 || reminder == 0) {
-							// code defined
-							createRow(i / 3, cells[i], cells[i + 1],
-									cells[i + 2]);
-						} else {
-							// hack to define empty codes ;-)
-							createRow((i - 1) / 3, cells[i - 1], cells[i],
-									cells[i + 1]);
+						if (i < numberOfColums) {
+							offset = 0;
+						}
+						for (int j = 0; j < 24; j++) {
+							if (i > numberOfColums && i < (j * numberOfColums)) {
+								offset = (j - 1) * numberOfColums;
+								break;
+							}
 						}
 						break;
 					}
 				}
+				createRow(cells, offset);
 			}
 
 			// increment
 			emptyLine = true;
-			count++;
+			lineCount++;
 		}
 	}
 
-	private void createRow(int number, String code, String caption,
-			String definition) throws Exception {
-		// <Row>
-		// <Value>
-		// <SimpleValue>AF</SimpleValue>
-		// </Value>
-		// <Value>
-		// <SimpleValue>AFGHANISTAN</SimpleValue>
-		// </Value>
-		// <Value>
-		// <SimpleValue>004</SimpleValue>
-		// </Value>
-		// </Row>
-		Row row = Row.Factory.newInstance();
+	void createColums(int levelCount, int numberOfColums, String[] cells)
+			throws DDIFtpException {
+		for (int j = 0; j < cells.length; j++) {
+			if (!cells[j].equals(empty)) {
+				String[] elements = cells[j].split(",");
+				if (elements.length != 4) {
+					DDIFtpException e = new DDIFtpException(Translator.trans(
+							"cv.error.columndefinition", "(" + levelCount + ","
+									+ j + ")"));
+					e.setRealThrowable(new Throwable());
+					throw e;
+				}
+				Column column = createColumn(elements, true);
 
-		// code
-		String currentCode = null;
-		if (code.length() == 0) {
-			currentCode = defineCode(caption);
-		} else {
-			currentCode = defineCode(code);
+				// set id key column
+				if (!keyColumnRefIdFound) {
+					keyColumnRefIdFound = true;
+					keyColumnRefId = column.getId();
+				}
+			}
 		}
-		parentCodeMap.put(number, currentCode);
-		// TODO add parent code links
+	}
 
-		row.addNewValue().addNewSimpleValue().setStringValue(currentCode);
+	/**
+	 * Create column
+	 * 
+	 * @param elements
+	 *            {ID, type, label, description}
+	 * @param useRequired
+	 *            is required
+	 * @return column
+	 * @throws DDIFtpException
+	 */
+	private Column createColumn(String[] elements, boolean useRequired)
+			throws DDIFtpException {
+		// id
+		Column column = Column.Factory.newInstance();
+		column.setId(elements[0]);
 
-		// caption
-		row.addNewValue().addNewSimpleValue()
-				.setStringValue(checkValue(caption));
+		// name
+		ShortName shortName = column.addNewShortName();
+		shortName.setStringValue(elements[0]);
 
-		// definition
-		row.addNewValue().addNewSimpleValue()
-				.setStringValue(checkValue(definition));
+		// label
+		LongName longName = column.addNewLongName();
+		longName.setStringValue(elements[2]);
+		longName.setLang(LanguageUtil.getOriginalLanguage());
 
+		// description
+		AnyOtherLanguageContent description = column.addNewAnnotation()
+				.addNewDescription();
+		setTextOnDescription(description, elements[3]);
+
+		// data type
+		// TODO data type check
+		// available data types are the definitions of:
+		// http://www.w3.org/TR/xmlschema11-2/#built-in-datatypes
+		column.addNewData().setType(elements[1].trim());
+
+		// required
+		if (useRequired) {
+			column.setUse(UseType.REQUIRED);
+		} else {
+			column.setUse(UseType.OPTIONAL);
+		}
+
+		columns.add(column);
+		return column;
+	}
+
+	private void createRow(String[] cells, int offset) throws Exception {
+		Row row = Row.Factory.newInstance(DdiManager.getInstance()
+				.getXmlOptions());
+		Value value;
+
+		// 0 - code
+		String currentCode = null;
+		// empty check
+		if (cells[offset].length() == 0) {
+			currentCode = defineCode(getPrefered(cells[offset + 1]));
+		} else {
+			currentCode = defineCode(cells[offset]);
+		}
+		value = row.addNewValue();
+		value.setColumnRef(columns.get(0).getId());
+		value.addNewSimpleValue().setStringValue(currentCode);
+
+		// 1 - label
+		value = row.addNewValue();
+		value.setColumnRef(columns.get(1).getId());
+		addComplexValueOnValue(value, cells[offset + 1]);
+
+		// 2 - definition, empty check
+		value = row.addNewValue();
+		value.setColumnRef(columns.get(2).getId());
+		addComplexValueOnValue(value, checkDefinition(cells, offset, 2));
+
+		// 3 + other custom cells
+		if (numberOfColums > 3) {
+			for (int i = 3; i < numberOfColums; i++) {
+				value = row.addNewValue();
+				value.setColumnRef(columns.get(i).getId());
+				if (columns.get(i).getData().getType().equals("string")) {
+					addComplexValueOnValue(value,
+							checkDefinition(cells, offset, i));
+				} else {
+					value.addNewSimpleValue().setStringValue(
+							checkDefinition(cells, offset, i));
+				}
+			}
+		}
+
+		// hirachy code
+		int level = offset / numberOfColums;
+		if (levelToRow.get(level - 1) != null) {
+			// parent
+			Row parent = levelToRow.get(level - 1);
+
+			// reset id
+			String oldId = row.getValueList().get(0).getSimpleValue()
+					.getStringValue();
+			String parentId = parent.getValueList().get(0).getSimpleValue()
+					.getStringValue();
+			row.getValueList().get(0).getSimpleValue()
+					.setStringValue(parentId + "." + oldId);
+
+			// check parent column
+			boolean foundParentCol = false;
+			for (Column col : columns) {
+				if (col.getId().equals(parentCode)) {
+					foundParentCol = true;
+				}
+			}
+			if (!foundParentCol) {
+				// create parent col
+				String[] parentElements = { parentCode, "string",
+						"Parent Code",
+						"The code defined by the parent in the hirachy", "en" };
+				createColumn(parentElements, false);
+			}
+
+			// set parent
+			value = row.addNewValue();
+			value.setColumnRef(parentCode);
+			value.addNewSimpleValue().setStringValue(parentId);
+
+			// check level column
+			boolean foundLevelCol = false;
+			for (Column col : columns) {
+				if (col.getId().equals(levelCode)) {
+					foundLevelCol = true;
+				}
+			}
+			if (!foundLevelCol) {
+				// create level col
+				String[] levelElements = { levelCode, "string",
+						"Lowest Level Code",
+						"The code defined at the current level in the hirachy",
+						"en" };
+				createColumn(levelElements, false);
+			}
+
+			// set level
+			value = row.addNewValue();
+			value.setColumnRef(levelCode);
+			value.addNewSimpleValue().setStringValue(oldId);
+		}
+		levelToRow.put(level, row);
 		rows.add(row);
+	}
+
+	private void addComplexValueOnValue(Value value, String text)
+			throws Exception {
+		HashMap<String, String> texts = defineLine(text);
+		AnyOtherContent anyOtherContent = value.addNewComplexValue();
+
+		for (Entry<String, String> entry : texts.entrySet()) {
+			String lang = entry.getValue();
+			if (lang == null) {
+				lang = LanguageUtil.getOriginalLanguage();
+			}
+
+			XmlBeansUtil.setXmlOnElement(anyOtherContent,
+					dk.dda.ddieditor.genericode.model.ddicv.Value
+							.createDdiCvValue(
+									"http://www.w3.org/XML/1998/namespace",
+									"lang", lang, entry.getKey()));
+		}
+	}
+
+	private String checkDefinition(String[] cells, int offset, int position) {
+		String definition;
+		if (cells.length > (offset + position)) {
+			definition = cells[offset + position];
+		} else {
+			definition = "";
+		}
+		return checkValue(definition);
 	}
 
 	private String checkValue(String value) {
@@ -258,41 +550,57 @@ public class CreateCvJob implements Runnable {
 		return code;
 	}
 
-	private void createColumn(int number, String shortName, String longName,
-			String description) throws Exception {
-		// create
+	private HashMap<String, String> defineLine(String line) throws Exception,
+			Exception {
+		String[] cells = csvParser.parseLine(line);
+		// key: label, value: lang
+		HashMap<String, String> result = new HashMap<String, String>();
+		for (int i = 0; i < cells.length; i++) {
+			String[] subPart = cells[i].split("=");
+			if (subPart.length == 1) {
+				result.put(subPart[0], null);
+			} else if (subPart.length > 2) {
+				DDIFtpException e = new DDIFtpException(Translator.trans(""),
+						new Throwable());
+				throw e;
+			} else {
+				result.put(subPart[0], subPart[1]);
+			}
+		}
 
-		// <Column Id="Definition" Use="required">
-		// <Annotation>
-		// <Description>
-		// <xhtml:p>Definition of the code.</xhtml:p>
-		// </Description>
-		// </Annotation>
-		// <ShortName/>
-		// <Data Type="string"/>
-		// </Column>
-
-		Column column = Column.Factory.newInstance();
-		column.addNewShortName().setStringValue(shortName);
-		column.addNewLongName().setStringValue(longName);
-		AnyOtherLanguageContent descriptionDoc = column.addNewAnnotation()
-				.addNewDescription();
-		descriptionDoc.setLang(LanguageUtil.getOriginalLanguage());
-		XmlBeansUtil.setTextOnMixedElement(descriptionDoc, description);
-
-		columns.add(column);
+		return result;
 	}
 
-	private void setText(LabelType label, String text) throws DDIFtpException {
-		XmlBeansUtil.setTextOnMixedElement(label, text);
-		XmlBeansUtil.addTranslationAttributes(label,
-				Translator.getLocaleLanguage(), false, true);
+	private String getPrefered(String line) throws Exception {
+		HashMap<String, String> lineMap = defineLine(line);
+		return getPrefered(lineMap);
 	}
 
-	private void setText(StructuredStringType struct, String text)
-			throws DDIFtpException {
-		XmlBeansUtil.setTextOnMixedElement(struct, text);
-		XmlBeansUtil.addTranslationAttributes(struct,
-				Translator.getLocaleLanguage(), false, true);
+	private String getPrefered(HashMap<String, String> lineMap)
+			throws Exception {
+		String result = null;
+		for (Entry<String, String> entry : lineMap.entrySet()) {
+			if (entry.getValue() == null) {
+				result = entry.getKey().trim();
+				break;
+			}
+		}
+		if (result == null && lineMap.size() > 0) {
+			result = lineMap.keySet().iterator().next().trim();
+		}
+		if (result == null) {
+			DDIFtpException e = new DDIFtpException(Translator.trans(""),
+					new Throwable());
+		}
+		return result;
+	}
+
+	private void setTextOnDescription(AnyOtherLanguageContent description,
+			String annotation) {
+		description.setLang(LanguageUtil.getOriginalLanguage());
+
+		PDocument pDoc = PDocument.Factory.newInstance();
+		XmlBeansUtil.setTextOnMixedElement(pDoc.addNewP(), annotation);
+		XmlBeansUtil.setXmlOnElement(description, pDoc);
 	}
 }
