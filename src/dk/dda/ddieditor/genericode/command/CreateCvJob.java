@@ -82,6 +82,9 @@ public class CreateCvJob implements Runnable {
 	List<Row> rows = new ArrayList<Row>();
 	Map<Integer, Row> levelToRow = new HashMap<Integer, Row>();
 
+	public static String SIMPLE_STRING = "simple-string";
+	List<String> simpleStringColId = new ArrayList<String>();
+
 	String keyColumnRefId;
 	boolean keyColumnRefIdFound = false;
 	int numberOfColums = 0;
@@ -389,7 +392,12 @@ public class CreateCvJob implements Runnable {
 		// TODO data type check
 		// available data types are the definitions of:
 		// http://www.w3.org/TR/xmlschema11-2/#built-in-datatypes
-		column.addNewData().setType(elements[1].trim());
+		String dataType = elements[1].trim();
+		if (dataType.equals(SIMPLE_STRING)) {
+			dataType = "string";
+			simpleStringColId.add(elements[0]);
+		}
+		column.addNewData().setType(dataType);
 
 		// required
 		if (useRequired) {
@@ -429,14 +437,20 @@ public class CreateCvJob implements Runnable {
 		value.setColumnRef(columns.get(2).getId());
 		addComplexValueOnValue(value, checkDefinition(cells, offset, 2));
 
-		// 3 + other custom cells
+		// 3 + code and custom cells
 		if (numberOfColums > 3) {
 			for (int i = 3; i < numberOfColums; i++) {
 				value = row.addNewValue();
 				value.setColumnRef(columns.get(i).getId());
+
 				if (columns.get(i).getData().getType().equals("string")) {
-					addComplexValueOnValue(value,
-							checkDefinition(cells, offset, i));
+					if (simpleStringColId.contains(columns.get(i).getId())) {
+						value.addNewSimpleValue().setStringValue(
+								checkDefinition(cells, offset, i));
+					} else {
+						addComplexValueOnValue(value,
+								checkDefinition(cells, offset, i));
+					}
 				} else {
 					value.addNewSimpleValue().setStringValue(
 							checkDefinition(cells, offset, i));
