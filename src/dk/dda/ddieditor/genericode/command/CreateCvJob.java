@@ -12,6 +12,7 @@ import java.util.Map.Entry;
 import javax.xml.namespace.QName;
 
 import org.apache.xmlbeans.XmlCursor;
+import org.apache.xmlbeans.XmlException;
 import org.apache.xmlbeans.XmlOptions;
 import org.ddialliance.ddieditor.model.DdiManager;
 import org.ddialliance.ddieditor.ui.editor.Editor;
@@ -37,7 +38,10 @@ import org.oasisOpen.docs.codelist.ns.genericode.Row;
 import org.oasisOpen.docs.codelist.ns.genericode.ShortName;
 import org.oasisOpen.docs.codelist.ns.genericode.UseType;
 import org.oasisOpen.docs.codelist.ns.genericode.Value;
+import org.w3.x1999.xhtml.DivDocument;
+import org.w3.x1999.xhtml.DivType;
 import org.w3.x1999.xhtml.PDocument;
+import org.w3.x1999.xhtml.PType;
 
 import au.com.bytecode.opencsv.CSVParser;
 import au.com.bytecode.opencsv.CSVReader;
@@ -136,24 +140,62 @@ public class CreateCvJob implements Runnable {
 		// description
 		AnyOtherLanguageContent description = codeListType.addNewAnnotation()
 				.addNewDescription();
-		setTextOnDescription(description, createCvWizard.annotation);
+		DivDocument divDoc;
+		try {
+			divDoc = DivDocument.Factory
+					.parse("<div xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\""
+							+ LanguageUtil.getOriginalLanguage()
+							+ "\" class=\"Description\"/>");
+		} catch (XmlException e) {
+			throw new DDIFtpException("Xml Create exception", e);
+		}
+		
+		XmlBeansUtil.setTextOnMixedElement(divDoc.getDiv().addNewP(),
+				createCvWizard.annotation);
+		XmlBeansUtil.setXmlOnElement(description, divDoc);
 
-		// app data
+		// copy right owner
 		AnyOtherContent appInfo = codeListType.getAnnotation().addNewAppInfo();
 		XmlBeansUtil.setXmlOnElement(appInfo,
 				dk.dda.ddieditor.genericode.model.ddicv.Value
 						.createDdiCvValueWithKeyAttValue("CopyrightOwner",
 								DdiEditorConfig
 										.get(DdiEditorConfig.DDI_AGENCY_NAME)));
+		
 		XmlBeansUtil.setXmlOnElement(appInfo,
 				dk.dda.ddieditor.genericode.model.ddicv.Value
 						.createDdiCvValueWithKeyAttValue("CopyrightOwnerUrl",
 								DdiEditorConfig
 										.get(DdiEditorConfig.DDI_AGENCY_HP)));
+		
+		// year
 		XmlBeansUtil.setXmlOnElement(appInfo,
 				dk.dda.ddieditor.genericode.model.ddicv.Value
 						.createDdiCvValueWithKeyAttValue("CopyrightYear", ""
 								+ Calendar.getInstance().get(Calendar.YEAR)));
+		
+		// license
+		XmlBeansUtil.setXmlOnElement(appInfo,
+				dk.dda.ddieditor.genericode.model.ddicv.Value
+						.createDdiCvValueWithKeyAttValue("LicenseName",
+								"Creative Commons Attribution-ShareAlike 3"));
+		
+		XmlBeansUtil.setXmlOnElement(appInfo,
+				dk.dda.ddieditor.genericode.model.ddicv.Value
+						.createDdiCvValueWithKeyAttValue("LicenseUrl",
+								"http://creativecommons.org/licenses/by-sa/3.0/"));
+
+		XmlBeansUtil.setXmlOnElement(appInfo,
+				dk.dda.ddieditor.genericode.model.ddicv.Value
+						.createDdiCvValueWithKeyAttValue("LicenseLogoUrl",
+								"http://i.creativecommons.org/l/by-sa/3.0/80x15.png"));
+
+		XmlBeansUtil.setXmlOnElement(appInfo,
+				dk.dda.ddieditor.genericode.model.ddicv.Value
+						.createDdiCvValueWithKeyAttValue("CopyrightText",
+								"Copyright ©"));
+		
+		// app data
 		XmlBeansUtil.setXmlOnElement(appInfo,
 				dk.dda.ddieditor.genericode.model.ddicv.Value
 						.createDdiCvValueWithKeyAttValue("Software",
@@ -610,7 +652,7 @@ public class CreateCvJob implements Runnable {
 	}
 
 	private void setTextOnDescription(AnyOtherLanguageContent description,
-			String annotation) {
+			String annotation) throws DDIFtpException {
 		description.setLang(LanguageUtil.getOriginalLanguage());
 
 		PDocument pDoc = PDocument.Factory.newInstance();
