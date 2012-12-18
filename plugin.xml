@@ -15,6 +15,11 @@
                label="Create CV"
                style="push">
          </command>
+         <command
+               commandId="dk.dda.ddieditor.genericode.command.PrintCv"
+               label="Print CV"
+               style="push">
+         </command>
          <separator
                name="ddieditor-genericode.separator1"
                visible="true">
@@ -27,6 +32,11 @@
             defaultHandler="dk.dda.ddieditor.genericode.command.CreateCv"
             id="dk.dda.ddieditor.genericode.command.CreateCv"
             name="Create CV">
+      </command>
+      <command
+            defaultHandler="dk.dda.ddieditor.genericode.command.PrintCv"
+            id="dk.dda.ddieditor.genericode.command.PrintCv"
+            name="Print CV">
       </command>
    </extension>
 
