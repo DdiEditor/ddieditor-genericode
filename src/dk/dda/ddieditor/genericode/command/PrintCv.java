@@ -34,12 +34,18 @@ public class PrintCv extends org.eclipse.core.commands.AbstractHandler {
 				.getDisplay().getActiveShell());
 		fileChooser.setText(Translator
 				.trans("OpenFileAction.filechooser.title"));
-		fileChooser.setFilterExtensions(new String[] { "*.cv" });
-		fileChooser.setFilterNames(new String[] { Translator
-				.trans("OpenFileAction.filechooser.filternames") });
+		fileChooser.setFilterExtensions(new String[] { "*.cv", "*.xml", "*.*" });
+		fileChooser.setFilterNames(new String[] {
+				Translator.trans("cv.filternames.cvfile"),
+				Translator.trans("cv.filternames.xmlfile"),
+				Translator.trans("cv.filternames.anyfile") });
 		PreferenceUtil.setPathFilter(fileChooser);
 		final String fileName = fileChooser.open();
-		PreferenceUtil.setLastBrowsedPath(fileName);
+		if (fileName==null) {
+			return null;
+		} else {
+			PreferenceUtil.setLastBrowsedPath(fileName);			
+		}
 
 		// print
 		try {
@@ -52,7 +58,7 @@ public class PrintCv extends org.eclipse.core.commands.AbstractHandler {
 							try {
 								monitor.beginTask(
 										Translator
-												.trans("PrintDDI3Action.tooltip.PrintDDI3"),
+												.trans("cv.print.notofication"),
 										1);
 
 								PlatformUI.getWorkbench().getDisplay()
@@ -91,7 +97,7 @@ public class PrintCv extends org.eclipse.core.commands.AbstractHandler {
 																			.getDisplay()
 																			.getActiveShell(),
 																	Translator
-																			.trans("PrintDDI3Action.mess.PrintDDI3Error"),
+																			.trans("cv.print.error"),
 																	e.getMessage());
 												}
 
@@ -134,7 +140,7 @@ public class PrintCv extends org.eclipse.core.commands.AbstractHandler {
 		} catch (Exception e) {
 			String errMess = MessageFormat
 					.format(Translator
-							.trans("PrintDDI3Action.mess.PrintDDI3Error"), e.getMessage()); //$NON-NLS-1$
+							.trans("cv.print.error"), e.getMessage()); //$NON-NLS-1$
 			MessageDialog.openError(PlatformUI.getWorkbench().getDisplay()
 					.getActiveShell(), Translator.trans("ErrorTitle"), errMess);
 		}
