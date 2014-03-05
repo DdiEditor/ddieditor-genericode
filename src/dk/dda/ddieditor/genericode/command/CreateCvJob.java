@@ -601,7 +601,8 @@ public class CreateCvJob implements Runnable {
 		code = code.replace("-", "");
 		code = code.replace(",", "");
 		code = code.replace(";", "");
-		code = code.replace(".", "");
+		// commet out 20140305 '.' is ok!
+ 		// code = code.replace(".", "");
 
 		return code;
 	}
