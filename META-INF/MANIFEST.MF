@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: Ddieditor Genericode
 Bundle-SymbolicName: ddieditor-genericode;singleton:=true
-Bundle-Version: 0.1.0
+Bundle-Version: 0.2.0
 Bundle-Activator: dk.dda.ddieditor.genericode.osgi.Activator
 Bundle-Vendor: Danish Data Archive
 Require-Bundle: org.eclipse.ui,
